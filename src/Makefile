@@ -9,7 +9,7 @@ sender: sender.c
 	$(CC) $(CFLAGS) sender.c -o sender $(LDFLAGS)
 
 receiver: receiver.c
-	$(CC) $(CFLAGS) receiver.c -o receiver
+	$(CC) $(CFLAGS) receiver.c -o receiver $(LDFLAGS)
 
 clean:
 	rm sender receiver
