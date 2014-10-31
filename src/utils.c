@@ -62,3 +62,53 @@ int init(timer_t *timer, void timer_handler(int))
 
 	return res;
 }
+
+/* Read from file into buffer, allocate it if needed
+ * Don't forget to free buffer */
+int read_from_file(char *file_name, char **buffer, int size)
+{
+	FILE *fp;
+	int pos = 0, count;
+	char *buf = *buffer;
+	size_t left = size;
+
+	if (!(fp = fopen(file_name, "r"))) {
+		printf("Error opening file %s, %s\n",
+				file_name, strerror(errno));
+		return -1;
+	}
+
+	if (!(buf = malloc(size * sizeof(char)))) {
+		printf("Unable to allocate buffer\n");
+		return -1;
+	}
+
+	while (left && (count = fread(&buf[pos], sizeof(char),
+					left < 64 ? left : 64, fp))) {
+		pos += count;
+		left -= count;
+	}
+
+	fclose(fp);
+	*buffer = buf;
+	return pos;
+}
+
+/* Create the bits array, represented in little endian
+ * Don't forget to free bits */
+int bytes_to_bits(const char *buf, unsigned char **bits, int size)
+{
+	int res = 0, count = 0, i, j;
+	unsigned char *bts = *bits;
+
+	if (!(bts = malloc(8 * size * sizeof(char)))) {
+		printf("Error allocating bits array\n");
+		return -1;
+	}
+
+	for (i = 0; i < size; i++)
+		for (j = 0; j < 8; j++)
+			bts[count++] = (unsigned char)((buf[i] >> j) & 1);
+
+	return res;
+}

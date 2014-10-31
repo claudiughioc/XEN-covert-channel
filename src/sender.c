@@ -2,6 +2,8 @@
 
 static int expired = 0;
 static timer_t timer;
+static char *buf;
+static unsigned char *bits;
 
 static void timer_handler(int signal)
 {
@@ -47,17 +49,29 @@ static void send(int val)
 }
 
 
-int main(void)
+int main(int argc, char **argv)
 {
-	int res = 0;
+	int res = 0, count, bytes;
 	struct timeval tim1, tim2;
 	long long start, end;
 
+	if (argc < 3) {
+		printf("Usage: %s file_name nr_chars\n", argv[0]);
+		return 1;
+	}
 	
 	/* Initialize the sender */
 	if ((res = init(&timer, timer_handler)))
 		return res;
 
+	bytes = atoi(argv[2]);
+	if ((count = read_from_file(argv[1], &buf, bytes))< 0)
+		return res;
+	printf("Buffer to send is %s\n", buf);
+
+	/* Transform bytes to bits */
+	if ((res = bytes_to_bits(buf, &bits, bytes)))
+		return res;
 
 	gettimeofday(&tim1, NULL);
 	send(1);
@@ -70,5 +84,7 @@ int main(void)
 
 	printf("All sent\n");
 
+	free(buf);
+	free(bits);
 	return 0;
 }
