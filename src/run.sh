@@ -2,4 +2,4 @@
 
 echo "Start test"
 ./receiver &
-./sender &
+./sender test 10 &

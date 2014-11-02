@@ -1,24 +1,25 @@
 #include "utils.h"
 
-static int expired = 0;
-static timer_t timer;
+static struct backend bck;
 
 static void timer_handler(int signal)
 {
 	printf("Timer expired\n");
-	expired = 1;
+	bck.expired = 1;
 }
 
-static void recv(void)
+/* Initialize the receiver */
+static int init_receiver(void)
 {
-	unsigned long x = 0;
-	start_timer(&timer, &expired);
+	int res = 0;
 
-	while (!expired)
-		x++;
+	/* Init the backend component */
+	bck.timer_handler = timer_handler;
+	bck.expired = 0;
+	if ((res = init(&bck)))
+		return res;
 
-	stop_timer(&timer, &expired);
-	printf("Work %lu\n", x);
+	return res;
 }
 
 int main(void)
@@ -27,13 +28,13 @@ int main(void)
 	struct timeval tim1, tim2;
 	long long start, end;
 
-	if ((res = init(&timer, timer_handler)))
+	if ((res = init_receiver()))
 		return res;
 
 	gettimeofday(&tim1, NULL);
-	recv();
-	recv();
-	recv();
+	printf("Received %lu \n", recv(&bck));
+	printf("Received %lu \n", recv(&bck));
+	printf("Received %lu \n", recv(&bck));
 	gettimeofday(&tim2, NULL);
 
 	start = tim1.tv_sec * 1000000ULL + tim1.tv_usec;
