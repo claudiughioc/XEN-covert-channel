@@ -1,12 +1,11 @@
 #include "utils.h"
 
-static int expired = 0;
 static struct backend bck;
 
 static void timer_handler(int signal)
 {
 	printf("R: Timer expired\n");
-	expired = 1;
+	bck.expired = 1;
 }
 
 static void sync_timer_handler(int signal)
@@ -35,6 +34,7 @@ static int init_receiver(void)
 int main(void)
 {
 	int res = 0;
+	unsigned long zero_work, one_work;
 
 	if ((res = init_receiver()))
 		return res;
@@ -44,7 +44,13 @@ int main(void)
 	//recv(&bck);
 
 	printf("R: All initiated, waiting for sync to start\n");
-	sleep(10);
+
+	/* Wait for the receiver to synchronize with the sender */
+	while (!bck.sync_expired);
+	calibrate(&bck, &zero_work, &one_work, 0);
+	printf("R: zero %lu, one %lu\n", zero_work, one_work);
+
+	printf("R is out\n");
 
 	return res;
 }

@@ -1,5 +1,20 @@
 #include "utils.h"
 
+void calibrate(struct backend *bck, unsigned long *zero_work,
+		unsigned long *one_work, int is_sender)
+{
+	if (is_sender) {
+		send(1, bck);
+		*one_work = recv(bck);
+		send(0, bck);
+		*zero_work = recv(bck);
+	} else {
+		*one_work = recv(bck);
+		send(1, bck);
+		*zero_work = recv(bck);
+		send(0, bck);
+	}
+}
 int start_timer(struct backend *bck)
 {
 	struct itimerspec its;
@@ -230,6 +245,7 @@ int bytes_to_bits(const char *buf, unsigned char **bits, int size)
 	for (i = 0; i < size; i++)
 		for (j = 0; j < 8; j++)
 			bts[count++] = (unsigned char)((buf[i] >> j) & 1);
+	*bits = bts;
 
 	return res;
 }

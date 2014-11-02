@@ -19,6 +19,12 @@
 #define MAX_SYNC_TIME		5000000		// uSEC
 #define EXTRA_SYNC_TIME		1000000		// uSEC
 
+#define FRAME_SIZE		32
+#define FRAME_HEADER_SIZE	18
+#define FRAME_TOTAL_SIZE	(FRAME_SIZE) + (FRAME_HEADER_SIZE)
+#define FRAME_SEQ_SIZE		8
+#define CRC_SIZE		8
+
 struct backend {
 	timer_t timer;
 	timer_t sync_timer;
@@ -30,6 +36,8 @@ struct backend {
 
 int start_timer(struct backend *bck);
 int stop_timer(struct backend *bck);
+void calibrate(struct backend *bck, unsigned long *zero_work,
+		unsigned long *one_work, int is_sender);
 void send(int val, struct backend *bck);
 unsigned long recv(struct backend *bck);
 int init(struct backend *bck);
