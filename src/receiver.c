@@ -1,21 +1,31 @@
 #include "utils.h"
 
+static int expired = 0;
 static struct backend bck;
 
 static void timer_handler(int signal)
 {
-	printf("Timer expired\n");
-	bck.expired = 1;
+	printf("R: Timer expired\n");
+	expired = 1;
+}
+
+static void sync_timer_handler(int signal)
+{
+	printf("R: Sync timer expired\n");
+	fflush(stdout);
+	bck.sync_expired = 1;
 }
 
 /* Initialize the receiver */
 static int init_receiver(void)
 {
 	int res = 0;
+	timer_t timer;
 
 	/* Init the backend component */
+	bck.timer = &timer;
 	bck.timer_handler = timer_handler;
-	bck.expired = 0;
+	bck.sync_timer_handler = sync_timer_handler;
 	if ((res = init(&bck)))
 		return res;
 
@@ -25,22 +35,16 @@ static int init_receiver(void)
 int main(void)
 {
 	int res = 0;
-	struct timeval tim1, tim2;
-	long long start, end;
 
 	if ((res = init_receiver()))
 		return res;
 
-	gettimeofday(&tim1, NULL);
-	printf("Received %lu \n", recv(&bck));
-	printf("Received %lu \n", recv(&bck));
-	printf("Received %lu \n", recv(&bck));
-	gettimeofday(&tim2, NULL);
+	//recv(&bck);
+	//recv(&bck);
+	//recv(&bck);
 
-	start = tim1.tv_sec * 1000000ULL + tim1.tv_usec;
-	end = tim2.tv_sec * 1000000ULL + tim2.tv_usec;
-	printf("Receiver started at %lld, finished at %lld\n", start, end);
-	printf("All received\n");
+	printf("R: All initiated, waiting for sync to start\n");
+	sleep(10);
 
 	return res;
 }

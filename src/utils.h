@@ -13,13 +13,19 @@
 #include <sys/types.h>
 
 #define LARGE_PRIME		492876847
-#define TIME_NSEC		50000000
+#define BIT_TIME_NSEC		50000000
 #define NSEC_TO_USEC(x)		((x) / 1000ULL)
+#define SYNC_TIME		1		// SEC
+#define MAX_SYNC_TIME		5000000		// uSEC
+#define EXTRA_SYNC_TIME		1000000		// uSEC
 
 struct backend {
 	timer_t timer;
+	timer_t sync_timer;
 	int expired;
+	int sync_expired;
 	void (*timer_handler)(int);
+	void (*sync_timer_handler)(int);
 };
 
 int start_timer(struct backend *bck);

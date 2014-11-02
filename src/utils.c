@@ -5,14 +5,12 @@ int start_timer(struct backend *bck)
 	struct itimerspec its;
 
 	its.it_value.tv_sec = 0;
-	its.it_value.tv_nsec = TIME_NSEC;
+	its.it_value.tv_nsec = BIT_TIME_NSEC;
 	its.it_interval.tv_sec = 0;
-	its.it_interval.tv_nsec = TIME_NSEC;
+	its.it_interval.tv_nsec = BIT_TIME_NSEC;
 	bck->expired = 0;
 
-	timer_settime(bck->timer, 0, &its, NULL);
-
-	return 0;
+	return timer_settime(bck->timer, 0, &its, NULL);
 }
 
 int stop_timer(struct backend *bck)
@@ -44,7 +42,7 @@ static void send_zero(void)
 {
 
 	printf("Sending zero\n");
-	usleep(NSEC_TO_USEC(TIME_NSEC));
+	usleep(NSEC_TO_USEC(BIT_TIME_NSEC));
 }
 
 unsigned long recv(struct backend *bck)
@@ -87,30 +85,99 @@ static int set_afin(void)
 	return sched_setaffinity(0, sizeof(mask), &mask);
 }
 
+int start_sync_timer(struct backend *bck, long long start_diff)
+{
+	struct itimerspec its;
+
+	printf("Starting the sync timeri %p in %lld\n",
+			&bck->sync_timer, start_diff);
+	its.it_value.tv_sec = start_diff / 1000000ULL;
+	its.it_value.tv_nsec = (start_diff % 1000000ULL) * 1000ULL;
+	printf("Synchronizing in %d seconds and %d nsecs\n",
+			(int)its.it_value.tv_sec,
+			(int)its.it_value.tv_nsec);
+	its.it_interval.tv_sec = SYNC_TIME;
+	its.it_interval.tv_nsec = 0;
+	bck->sync_expired = 0;
+
+	return timer_settime(bck->sync_timer, 0, &its, NULL);
+}
+
+int stop_sync_timer(struct backend *bck)
+{
+	struct itimerspec its;
+
+	its.it_value.tv_sec = 0;
+	its.it_value.tv_nsec = 0;
+	bck->sync_expired = 0;
+
+	return timer_settime(bck->sync_timer, 0, &its, NULL);
+}
+
 int init(struct backend *bck)
 {
 	int res = 0;
-	struct sigevent sevp;
+	struct sigevent sevp, sevp2;
 	struct sigaction sa;
+	struct timeval tim;
+	long long now, sync_start;
+
+	if (!bck->timer_handler || !bck->sync_timer_handler) {
+		printf("Provide both the timer handlers\n");
+		return res;
+	}
+
+	bck->expired = 0;
+	bck->sync_expired = 0;
 
 	/* Set process afinity */
 	if ((res = set_afin()))
 		printf("Error setting cpu affinity\n");
 
 	/* Set the sigalrm handler */
-	memset(&sa, 0, sizeof (sa));
+	memset(&sa, 0, sizeof(sa));
 	sa.sa_handler = bck->timer_handler;
 	if ((res = sigaction(SIGALRM, &sa, NULL))) {
-		printf("Error setting the signal handler: %s\n", strerror(errno));
+		printf("Error setting the signal handler: %s\n",
+				strerror(errno));
+		return res;
+	}
+
+	/* Set the sigusr1 handler */
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = bck->sync_timer_handler;
+	if ((res = sigaction(SIGRTMIN, &sa, NULL))) {
+		printf("Error setting the signal handler: %s\n",
+				strerror(errno));
 		return res;
 	}
 
 
-	/* Create the timer */
+	/* Create the bit timer */
 	sevp.sigev_notify = SIGEV_SIGNAL;
 	sevp.sigev_signo = SIGALRM;
 	if ((res = timer_create(CLOCK_MONOTONIC, &sevp, &bck->timer))) {
 		printf("Error creating the timer %s\n", strerror(errno));
+		return res;
+	}
+
+	/* Create the sync timer */
+	sevp2.sigev_notify = SIGEV_SIGNAL;
+	sevp2.sigev_signo = SIGRTMIN;
+	sevp2.sigev_value.sival_ptr = &bck->sync_timer;
+	if ((res = timer_create(CLOCK_MONOTONIC, &sevp2, &bck->sync_timer))) {
+		printf("Error creating the sync timer %s\n", strerror(errno));
+		return res;
+	}
+
+
+	/* Start the sync timer */
+	gettimeofday(&tim, NULL);
+	now = tim.tv_sec * 1000000ULL + tim.tv_usec;
+	sync_start = now - (now % MAX_SYNC_TIME) +
+		MAX_SYNC_TIME + EXTRA_SYNC_TIME;
+	if ((res = start_sync_timer(bck, sync_start - now))) {
+		printf("Unable to start sync timer %s\n", strerror(errno));
 		return res;
 	}
 
