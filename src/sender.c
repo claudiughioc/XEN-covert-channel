@@ -1,39 +1,24 @@
 #include "utils.h"
 
-struct sender_t {
-	char *buf;
-	int buf_p;
-
-	unsigned char *bits;		// buffer with the bits to send
-	int bits_p;			// start of next frame, bits sent
-	int size;
-
-	unsigned char frame[FRAME_TOTAL_SIZE];
-	int frame_p;			// bits sent inside a frame
-	char frame_no;		// frame sequence number, starts at 1
-};
+static int running = 1;
+static int tf = 0;
+static work_id state;
 
 static struct backend bck;
-static struct sender_t sender;
+static struct worker sender;
 
 static void timer_handler(int signal)
 {
-	printf("S: Timer expired\n");
+	//printf("S: Timer expired\n");
+	fflush(stdout);
 	bck.expired = 1;
 }
-
-static void sync_timer_handler(int signal)
-{
-	printf("S: Sync timer expired\n");
-	fflush(stdout);
-	bck.sync_expired = 1;
-}
-
 
 /* Initialize the sender */
 static int init_sender(char *file_name, const int bytes)
 {
 	int res = 0, count;
+	unsigned long zero_work, one_work;
 
 	/* Read data to be sent from file */
 	sender.size = bytes;
@@ -49,9 +34,14 @@ static int init_sender(char *file_name, const int bytes)
 
 	/* Init the backend component */
 	bck.timer_handler = timer_handler;
-	bck.sync_timer_handler = sync_timer_handler;
 	if ((res = init(&bck)))
 		return res;
+
+	/* Wait for the sender to synchronize with the receiver */
+	while (!bck.expired);
+	calibrate(&bck, &zero_work, &one_work, 1);
+	printf("S: zero %lu, one %lu\n", zero_work, one_work);
+	sender.threshold = (one_work + zero_work) / 2;
 
 	return res;
 }
@@ -89,6 +79,64 @@ static int build_frame(void)
 
 	for (i = 0; i < FRAME_TOTAL_SIZE; i++)
 		printf("%d, ", frame[i]);
+	memcpy(sender.frame, frame, FRAME_TOTAL_SIZE);
+
+	return res;
+}
+
+static int build_info_frame(void)
+{
+	int res = 0, idx = 1, i;
+	unsigned char frame[FRAME_TOTAL_SIZE];
+	unsigned char *aux;
+	char size = (char)sender.size;
+
+	/* Start bit */
+	frame[0] = (int)1;
+
+	/* Add the size of the file */
+	if ((res = bytes_to_bits(&size, &aux, 1))) {
+		printf("Error transforming seq number to bits\n");
+		return res;
+	}
+	memcpy(&frame[1], aux, FRAME_SEQ_SIZE);
+	free(aux);
+	idx += FRAME_SEQ_SIZE;
+
+	/* Stop bit */
+	frame[idx] = (int)1;
+
+	printf("Info frame\n");
+	for (i = 0; i < FRAME_SEQ_SIZE + 2; i++)
+		printf("%d, ", frame[i]);
+
+	memcpy(sender.frame, frame, FRAME_SEQ_SIZE + 2);
+	sender.to_trans = FRAME_SEQ_SIZE + 2;
+	sender.trans = 0;
+
+	return res;
+}
+
+static int check_progress(void)
+{
+	int res = 0;
+
+	switch (state) {
+	case SEND_INFO:
+		if (sender.trans)
+			return res;
+
+		printf("Sending init info, size of file is %d\n",
+				sender.size);
+		if ((res = build_info_frame())) {
+			printf("Unable to build info frame\n");
+			return res;
+		}
+		break;
+
+	default:
+		printf("Unknown state\n");
+	}
 
 	return res;
 }
@@ -97,7 +145,7 @@ static int build_frame(void)
 int main(int argc, char **argv)
 {
 	int res = 0;
-	unsigned long zero_work, one_work;
+	unsigned long work;
 
 	if (argc < 3) {
 		printf("Usage: %s file_name nr_chars\n", argv[0]);
@@ -107,23 +155,55 @@ int main(int argc, char **argv)
 	if ((res = init_sender(argv[1], atoi(argv[2]))))
 		return res;
 
-	printf("S: All initiated, waiting for sync to start\n");
+	printf("S: All initiated\n");
 
-	//send(1, &bck);
-	//send(1, &bck);
-	//send(0, &bck);
 
-	//printf("Sync timer %d\n", start_sync_timer(&bck));
-	//printf("Error %s\n", strerror(errno));
-	
-	/* Wait for the sender to synchronize with the receiver */
-	while (!bck.sync_expired);
-	calibrate(&bck, &zero_work, &one_work, 1);
-	printf("S: zero %lu, one %lu\n", zero_work, one_work);
+	state = SEND_INFO;
+	printf("S: Going to run now\n");
+	while (running) {
+		printf("\nS: Time frame is %d\n", tf);
+		bck.expired = 0;
 
-	while (sender.bits_p < 8 * sender.size) {
-		build_frame();
-		sender.bits_p += FRAME_SIZE;
+
+		/* Prepare what to do next */
+		if ((res = check_progress())) {
+			printf("Unable to prepare sender\n");
+			return res;
+		}
+
+		/* Do something until the timer expires */
+		switch (state) {
+		case SEND_INFO:
+			printf("Work is SEND_INFO\n");
+
+			send(sender.frame[sender.trans], &bck);
+			sender.trans++;
+
+			if (sender.trans == sender.to_trans)
+				state = SEND;
+			break;
+
+		case SEND:
+			printf("Work is SEND\n");
+			break;
+		case RECV:
+			printf("Work is RECV\n");
+			break;
+		case WAIT:
+			printf("Work is WAIT\n");
+			break;
+		default:
+			printf("NO WORK SPECIFIED. THAT'S WRONG\n");
+		}
+
+		printf("Wait for tick\n");
+		while (!bck.expired);
+		printf("Go to next time frame\n");
+
+		tf++;
+		if (!running)
+			break;
+		fflush(stdout);
 	}
 
 
@@ -131,5 +211,6 @@ int main(int argc, char **argv)
 	printf("S: is out\n");
 	free(sender.buf);
 	free(sender.bits);
+	stop_timer(&bck);
 	return 0;
 }

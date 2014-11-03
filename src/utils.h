@@ -13,9 +13,8 @@
 #include <sys/types.h>
 
 #define LARGE_PRIME		492876847
-#define BIT_TIME_NSEC		50000000
+#define BIT_TIME_NSEC		200000000
 #define NSEC_TO_USEC(x)		((x) / 1000ULL)
-#define SYNC_TIME		1		// SEC
 #define MAX_SYNC_TIME		5000000		// uSEC
 #define EXTRA_SYNC_TIME		1000000		// uSEC
 
@@ -24,6 +23,30 @@
 #define FRAME_TOTAL_SIZE	(FRAME_SIZE) + (FRAME_HEADER_SIZE)
 #define FRAME_SEQ_SIZE		8
 #define CRC_SIZE		8
+
+typedef enum {
+	SEND,
+	SEND_INFO,
+	RECV,
+	RECV_INFO,
+	WAIT
+} work_id;
+
+struct worker {
+	char *buf;
+	int buf_p;
+
+	unsigned char *bits;		// buffer with the bits to send
+	int bits_p;			// start of next frame, bits sent
+	int size;
+
+	unsigned char frame[FRAME_TOTAL_SIZE];
+	int trans;			// bits sent inside a frame
+	int to_trans;			// bits to send in a frame
+	char frame_no;			// frame sequence number, starts at 1
+
+	unsigned long threshold;	// decide whether it's one or zero
+};
 
 struct backend {
 	timer_t timer;
@@ -34,7 +57,8 @@ struct backend {
 	void (*sync_timer_handler)(int);
 };
 
-int start_timer(struct backend *bck);
+void print_frame(struct worker worker);
+int start_timer(struct backend *bck, long long start_diff);
 int stop_timer(struct backend *bck);
 void calibrate(struct backend *bck, unsigned long *zero_work,
 		unsigned long *one_work, int is_sender);

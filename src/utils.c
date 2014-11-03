@@ -1,26 +1,118 @@
 #include "utils.h"
 
+void print_frame(struct worker worker)
+{
+	int i = 0;
+
+	printf("Printing frame (%d, %d): ", worker.trans, worker.to_trans);
+	for (i = 0; i < worker.to_trans; i++)
+		printf("%d, ", worker.frame[i]);
+	printf("\n");
+	fflush(stdout);
+}
+
+static void calibrate_sender(struct backend *bck, unsigned long *zero_work,
+		unsigned long *one_work)
+{
+	printf("Calibrating the sender\n");
+	send(1, bck);
+	bck->expired = 0;
+	*one_work = recv(bck);
+	bck->expired = 0;
+	send(0, bck);
+	bck->expired = 0;
+	*zero_work = recv(bck);
+	bck->expired = 0;
+}
+
+static void calibrate_receiver(struct backend *bck, unsigned long *zero_work,
+		unsigned long *one_work)
+{
+	printf("Calibrating the receiver\n");
+	*one_work = recv(bck);
+	bck->expired = 0;
+	send(1, bck);
+	bck->expired = 0;
+	*zero_work = recv(bck);
+	bck->expired = 0;
+	send(0, bck);
+	bck->expired = 0;
+}
+
 void calibrate(struct backend *bck, unsigned long *zero_work,
 		unsigned long *one_work, int is_sender)
 {
-	if (is_sender) {
-		send(1, bck);
-		*one_work = recv(bck);
-		send(0, bck);
-		*zero_work = recv(bck);
-	} else {
-		*one_work = recv(bck);
-		send(1, bck);
-		*zero_work = recv(bck);
-		send(0, bck);
+	bck->expired = 0;
+	if (is_sender)
+		calibrate_sender(bck, zero_work, one_work);
+	else
+		calibrate_receiver(bck, zero_work, one_work);
+}
+
+static void send_one(struct backend *bck)
+{
+	unsigned long long x = 1;
+
+	printf("Sending one\n");
+	while (!bck->expired) {
+		x *= LARGE_PRIME;
 	}
 }
-int start_timer(struct backend *bck)
+
+static void send_zero(struct backend *bck)
+{
+	printf("Sending zero\n");
+	usleep(NSEC_TO_USEC(BIT_TIME_NSEC - 20000000));
+	while (!bck->expired);
+}
+
+unsigned long recv(struct backend *bck)
+{
+	unsigned long long y = 1;
+	unsigned long x = 0;
+
+	while (!bck->expired) {
+		y *= LARGE_PRIME;
+		x++;
+	}
+
+	return x;
+}
+
+void send(int val, struct backend *bck)
+{
+	switch (val) {
+	case 1:
+		send_one(bck);
+		break;
+	case 0:
+		send_zero(bck);
+		break;
+	default:
+		printf("Unable to send %d\n", val);
+	}
+}
+
+static int set_afin(void)
+{
+	cpu_set_t mask;
+
+	CPU_ZERO(&mask);
+	CPU_SET(1, &mask);
+	return sched_setaffinity(0, sizeof(mask), &mask);
+}
+
+int start_timer(struct backend *bck, long long start_diff)
 {
 	struct itimerspec its;
 
-	its.it_value.tv_sec = 0;
-	its.it_value.tv_nsec = BIT_TIME_NSEC;
+	printf("Starting the timer %p in %lld\n",
+			&bck->timer, start_diff);
+	its.it_value.tv_sec = start_diff / 1000000ULL;
+	its.it_value.tv_nsec = (start_diff % 1000000ULL) * 1000ULL;
+	printf("Synchronizing in %d seconds and %d nsecs\n",
+			(int)its.it_value.tv_sec,
+			(int)its.it_value.tv_nsec);
 	its.it_interval.tv_sec = 0;
 	its.it_interval.tv_nsec = BIT_TIME_NSEC;
 	bck->expired = 0;
@@ -39,111 +131,20 @@ int stop_timer(struct backend *bck)
 	return timer_settime(bck->timer, 0, &its, NULL);
 }
 
-static void send_one(struct backend *bck)
-{
-	unsigned long long x = 1;
-	printf("Sending one\n");
-
-	start_timer(bck);
-
-	while (!bck->expired) {
-		x *= LARGE_PRIME;
-	}
-
-	stop_timer(bck);
-}
-
-static void send_zero(void)
-{
-
-	printf("Sending zero\n");
-	usleep(NSEC_TO_USEC(BIT_TIME_NSEC));
-}
-
-unsigned long recv(struct backend *bck)
-{
-	unsigned long long y = 1;
-	unsigned long x = 0;
-
-	start_timer(bck);
-
-	while (!bck->expired) {
-		y *= LARGE_PRIME;
-		x++;
-	}
-
-	stop_timer(bck);
-
-	return x;
-}
-
-void send(int val, struct backend *bck)
-{
-	switch (val) {
-	case 1:
-		send_one(bck);
-		break;
-	case 0:
-		send_zero();
-		break;
-	default:
-		printf("Unable to send %d\n", val);
-	}
-}
-
-static int set_afin(void)
-{
-	cpu_set_t mask;
-
-	CPU_ZERO(&mask);
-	CPU_SET(1, &mask);
-	return sched_setaffinity(0, sizeof(mask), &mask);
-}
-
-int start_sync_timer(struct backend *bck, long long start_diff)
-{
-	struct itimerspec its;
-
-	printf("Starting the sync timeri %p in %lld\n",
-			&bck->sync_timer, start_diff);
-	its.it_value.tv_sec = start_diff / 1000000ULL;
-	its.it_value.tv_nsec = (start_diff % 1000000ULL) * 1000ULL;
-	printf("Synchronizing in %d seconds and %d nsecs\n",
-			(int)its.it_value.tv_sec,
-			(int)its.it_value.tv_nsec);
-	its.it_interval.tv_sec = SYNC_TIME;
-	its.it_interval.tv_nsec = 0;
-	bck->sync_expired = 0;
-
-	return timer_settime(bck->sync_timer, 0, &its, NULL);
-}
-
-int stop_sync_timer(struct backend *bck)
-{
-	struct itimerspec its;
-
-	its.it_value.tv_sec = 0;
-	its.it_value.tv_nsec = 0;
-	bck->sync_expired = 0;
-
-	return timer_settime(bck->sync_timer, 0, &its, NULL);
-}
-
 int init(struct backend *bck)
 {
 	int res = 0;
-	struct sigevent sevp, sevp2;
+	struct sigevent sevp;
 	struct sigaction sa;
 	struct timeval tim;
 	long long now, sync_start;
 
-	if (!bck->timer_handler || !bck->sync_timer_handler) {
-		printf("Provide both the timer handlers\n");
+	if (!bck->timer_handler) {
+		printf("Provide the timer handler\n");
 		return res;
 	}
 
 	bck->expired = 0;
-	bck->sync_expired = 0;
 
 	/* Set process afinity */
 	if ((res = set_afin()))
@@ -158,15 +159,6 @@ int init(struct backend *bck)
 		return res;
 	}
 
-	/* Set the sigusr1 handler */
-	memset(&sa, 0, sizeof(sa));
-	sa.sa_handler = bck->sync_timer_handler;
-	if ((res = sigaction(SIGRTMIN, &sa, NULL))) {
-		printf("Error setting the signal handler: %s\n",
-				strerror(errno));
-		return res;
-	}
-
 
 	/* Create the bit timer */
 	sevp.sigev_notify = SIGEV_SIGNAL;
@@ -176,22 +168,13 @@ int init(struct backend *bck)
 		return res;
 	}
 
-	/* Create the sync timer */
-	sevp2.sigev_notify = SIGEV_SIGNAL;
-	sevp2.sigev_signo = SIGRTMIN;
-	sevp2.sigev_value.sival_ptr = &bck->sync_timer;
-	if ((res = timer_create(CLOCK_MONOTONIC, &sevp2, &bck->sync_timer))) {
-		printf("Error creating the sync timer %s\n", strerror(errno));
-		return res;
-	}
-
 
 	/* Start the sync timer */
 	gettimeofday(&tim, NULL);
 	now = tim.tv_sec * 1000000ULL + tim.tv_usec;
 	sync_start = now - (now % MAX_SYNC_TIME) +
 		MAX_SYNC_TIME + EXTRA_SYNC_TIME;
-	if ((res = start_sync_timer(bck, sync_start - now))) {
+	if ((res = start_timer(bck, sync_start - now))) {
 		printf("Unable to start sync timer %s\n", strerror(errno));
 		return res;
 	}
