@@ -69,7 +69,7 @@ static int build_frame(void)
 	idx += FRAME_SIZE;
 
 	/* Add the CRC code */
-	idx += CRC_SIZE;
+	idx += FRAME_CRC_SIZE;
 
 	/* Stop bit */
 	frame[idx] = (int)1;
@@ -145,6 +145,13 @@ static int check_progress(void)
 		fflush(stdout);
 		break;
 
+	case RECV_ACK:
+		if (sender.trans)
+			return res;
+
+		printf("S: receiving ACK\n");
+		break;
+
 	default:
 		printf("Unknown state\n");
 	}
@@ -207,10 +214,23 @@ int main(int argc, char **argv)
 			/* Finish sending frame, wait for ACK */
 			if (sender.trans == sender.to_trans) {
 				printf("_____________STOP_________\n");
+				sender.trans = 0;
+				sender.to_trans = FRAME_ACK_SIZE;
+				state = RECV_ACK;
 			}
 			break;
+
 		case RECV_ACK:
 			printf("Work is RECV\n");
+			work = recv(&bck);
+			fill_frame(work, sender);
+
+			if (sender.trans == sender.to_trans) {
+				printf("_____________STOP_________\n");
+				sender.trans = 0;
+				sender.to_trans = FRAME_TOTAL_SIZE;
+				state = SEND;
+			}
 			break;
 		case WAIT:
 			printf("Work is WAIT\n");

@@ -1,5 +1,16 @@
 #include "utils.h"
 
+void fill_frame(unsigned long work, struct worker worker)
+{
+	if (work < worker.threshold) {
+		printf("R: Got a one with %lu\n", work);
+		worker.frame[worker.trans++] = (int)1;
+	} else {
+		printf("R: Got a zero with %lu\n", work);
+		worker.frame[worker.trans++] = (int)0;
+	}
+}
+
 void print_frame(struct worker worker)
 {
 	int i = 0;
@@ -238,19 +249,20 @@ int bytes_to_bits(const char *buf, unsigned char **bits, int size)
 int bits_to_bytes(const unsigned char *bits, char **bytes, int bits_no)
 {
 	int res = 0, count = 0, i, idx;
-	char *bts = *bytes;
+	char *bts;
 
-	if (!(bts = malloc(bits_no / 8 * sizeof(char)))) {
+	if (!(bts = (char *)malloc(bits_no / 8 * sizeof(char)))) {
 		printf("Error allocating bytes array\n");
 		return -1;
 	}
+	printf("allocating at %p\n", bts);
 
 	for (i = 0; i < bits_no; i++) {
 		idx = i % 8;
 		if (idx == 0)
-			bytes[count] = 0;
+			bts[count] = 0;
 
-		bts[count] |= ((int)bits[i] & 1) << i;
+		bts[count] |= ((int)bits[i] & 1) << idx;
 
 		if (idx == 7) {
 			printf("Obtained byte %d\n", (int) bts[count]);
