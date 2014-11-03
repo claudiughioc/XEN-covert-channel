@@ -29,6 +29,7 @@ typedef enum {
 	SEND_INFO,
 	RECV,
 	RECV_INFO,
+	RECV_ACK,
 	WAIT
 } work_id;
 
@@ -68,5 +69,6 @@ int init(struct backend *bck);
 
 int read_from_file(char *file_name, char **buf, int size);
 int bytes_to_bits(const char *buf, unsigned char **bits, int size);
+int bits_to_bytes(const unsigned char *bits, char **bytes, int bits_no);
 
 #endif

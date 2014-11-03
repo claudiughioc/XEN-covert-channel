@@ -77,8 +77,6 @@ static int build_frame(void)
 	free(frame_no_bits);
 	sender.frame_no++;
 
-	for (i = 0; i < FRAME_TOTAL_SIZE; i++)
-		printf("%d, ", frame[i]);
 	memcpy(sender.frame, frame, FRAME_TOTAL_SIZE);
 
 	return res;
@@ -134,6 +132,19 @@ static int check_progress(void)
 		}
 		break;
 
+	case SEND:
+		if (sender.trans)
+			return res;
+
+		if ((res = build_frame())) {
+			printf("Unable to build frame\n");
+			return res;
+		}
+		printf("S: Going to send the next frame\n");
+		print_frame(sender);
+		fflush(stdout);
+		break;
+
 	default:
 		printf("Unknown state\n");
 	}
@@ -179,14 +190,26 @@ int main(int argc, char **argv)
 			send(sender.frame[sender.trans], &bck);
 			sender.trans++;
 
-			if (sender.trans == sender.to_trans)
+			/* Finish sending info, switch to next state */
+			if (sender.trans == sender.to_trans) {
+				sender.trans = 0;
+				sender.to_trans = FRAME_TOTAL_SIZE;
 				state = SEND;
+			}
 			break;
+
 
 		case SEND:
 			printf("Work is SEND\n");
+			send(sender.frame[sender.trans], &bck);
+			sender.trans++;
+
+			/* Finish sending frame, wait for ACK */
+			if (sender.trans == sender.to_trans) {
+				printf("_____________STOP_________\n");
+			}
 			break;
-		case RECV:
+		case RECV_ACK:
 			printf("Work is RECV\n");
 			break;
 		case WAIT:
@@ -196,9 +219,7 @@ int main(int argc, char **argv)
 			printf("NO WORK SPECIFIED. THAT'S WRONG\n");
 		}
 
-		printf("Wait for tick\n");
 		while (!bck.expired);
-		printf("Go to next time frame\n");
 
 		tf++;
 		if (!running)

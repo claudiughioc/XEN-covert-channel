@@ -10,6 +10,7 @@ static struct backend bck;
 static void timer_handler(int signal)
 {
 	//printf("R: Timer expired\n");
+	fflush(stdout);
 	bck.expired = 1;
 }
 
@@ -45,6 +46,28 @@ static void fill_frame(unsigned long work)
 	}
 }
 
+static void store_info(void)
+{
+	char *byte;
+
+	switch (state) {
+	case RECV_INFO:
+		if (bits_to_bytes(&receiver.frame[1], &byte, 8)) {
+			printf("Error converting bits to bytes\n");
+			return;
+		}
+		printf("Will have to transfer %d bytes\n", (int)(*byte));
+		free(byte);
+		break;
+
+	case RECV:
+		break;
+
+	default:
+		break;
+	}
+}
+
 static int check_progress(void)
 {
 	int res = 0;
@@ -58,6 +81,11 @@ static int check_progress(void)
 		receiver.trans = 0;
 		receiver.to_trans = FRAME_SEQ_SIZE + 2;
 		break;
+
+	case RECV:
+		if (receiver.trans)
+			return res;
+		printf("R: Receiving frame\n");
 
 	default:
 		printf("Unknown state\n");
@@ -99,14 +127,29 @@ int main(void)
 			work = recv(&bck);
 			fill_frame(work);
 
+			/* Finish receiving info, switch to next state */
 			if (receiver.trans == receiver.to_trans) {
+				print_frame(receiver);
+				store_info();
 				state = RECV;
+				receiver.trans = 0;
+				receiver.to_trans = FRAME_TOTAL_SIZE;
 			}
 			break;
 
 		case RECV:
-			printf("R:Work is RECV\n");
-			print_frame(receiver);
+			printf("R:Work is RECV, trans %d, to_trans%d \n",
+					receiver.trans, receiver.to_trans);
+			work = recv(&bck);
+			fill_frame(work);
+
+			if (receiver.trans == receiver.to_trans) {
+				printf("--------HALT------");
+				print_frame(receiver);
+				receiver.trans = 0;
+				receiver.to_trans = FRAME_TOTAL_SIZE;
+				fflush(stdout);
+			}
 			break;
 
 		case WAIT:
@@ -117,9 +160,7 @@ int main(void)
 			printf("NO WORK SPECIFIED. THAT'S WRONG\n");
 		}
 
-		printf("Wait for tick\n");
 		while (!bck.expired);
-		printf("Go to next time frame\n");
 
 		tf++;
 		if (!running)

@@ -232,3 +232,34 @@ int bytes_to_bits(const char *buf, unsigned char **bits, int size)
 
 	return res;
 }
+
+/* Create the bytes array, from bits represented in little endian
+ * Don't forget to free bytes */
+int bits_to_bytes(const unsigned char *bits, char **bytes, int bits_no)
+{
+	int res = 0, count = 0, i, idx;
+	char *bts = *bytes;
+
+	if (!(bts = malloc(bits_no / 8 * sizeof(char)))) {
+		printf("Error allocating bytes array\n");
+		return -1;
+	}
+
+	for (i = 0; i < bits_no; i++) {
+		idx = i % 8;
+		if (idx == 0)
+			bytes[count] = 0;
+
+		bts[count] |= ((int)bits[i] & 1) << i;
+
+		if (idx == 7) {
+			printf("Obtained byte %d\n", (int) bts[count]);
+			count++;
+		}
+	}
+
+	*bytes = bts;
+
+	return res;
+
+}
