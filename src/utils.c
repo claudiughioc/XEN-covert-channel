@@ -211,6 +211,8 @@ int read_from_file(char *file_name, char **buffer, int size)
 		return -1;
 	}
 
+	/* Allocate a bit more for frame padding */
+	size = size - (size % FRAME_BYTES) + FRAME_BYTES;
 	if (!(buf = malloc(size * sizeof(char)))) {
 		printf("Unable to allocate buffer\n");
 		return -1;
@@ -258,7 +260,6 @@ int bits_to_bytes(const unsigned char *bits, char **bytes, int bits_no)
 		printf("Error allocating bytes array\n");
 		return -1;
 	}
-	printf("allocating at %p\n", bts);
 
 	for (i = 0; i < bits_no; i++) {
 		idx = i % 8;
@@ -267,10 +268,8 @@ int bits_to_bytes(const unsigned char *bits, char **bytes, int bits_no)
 
 		bts[count] |= ((int)bits[i] & 1) << idx;
 
-		if (idx == 7) {
-			printf("Obtained byte %d\n", (int) bts[count]);
+		if (idx == 7)
 			count++;
-		}
 	}
 
 	*bytes = bts;

@@ -15,7 +15,7 @@ static void timer_handler(int signal)
 }
 
 /* Initialize the sender */
-static int init_sender(char *file_name, const int bytes)
+static int init_sender(char *file_name, int bytes)
 {
 	int res = 0, count;
 	unsigned long zero_work, one_work;
@@ -29,6 +29,7 @@ static int init_sender(char *file_name, const int bytes)
 
 
 	/* Transform bytes to bits */
+	bytes = bytes + (bytes % FRAME_BYTES) + FRAME_BYTES;
 	if ((res = bytes_to_bits(sender.buf, &sender.bits, bytes)))
 		return res;
 
@@ -238,7 +239,6 @@ int main(int argc, char **argv)
 
 			/* Finish sending frame, wait for ACK */
 			if (sender.trans == sender.to_trans) {
-				printf("_____________STOP_________\n");
 				sender.trans = 0;
 				sender.to_trans = FRAME_ACK_SIZE;
 				state = RECV_ACK;
@@ -252,9 +252,10 @@ int main(int argc, char **argv)
 
 			/* Finished receiving ACK */
 			if (sender.trans == sender.to_trans) {
-				if (check_ack())
+				if (check_ack()) {
 					sender.frame_no++;
-				else
+					sender.bits_p += FRAME_SIZE;
+				} else
 					printf("S: ACK WRONG, resending %d\n",
 							sender.frame_no);
 
@@ -273,7 +274,7 @@ int main(int argc, char **argv)
 		while (!bck.expired);
 
 		tf++;
-		if (sender.frame_no * FRAME_BYTES > sender.size)
+		if (sender.frame_no * FRAME_BYTES >= sender.size)
 			break;
 		fflush(stdout);
 	}

@@ -220,10 +220,8 @@ int main(void)
 
 			/* Finished receiving, send ACK */
 			if (receiver.trans == receiver.to_trans) {
-				printf("--------HALT------");
 				print_frame(receiver);
 				store_info();
-				printf("After storing\n");
 				fflush(stdout);
 
 				receiver.trans = 0;
@@ -251,10 +249,6 @@ int main(void)
 			}
 			break;
 
-		case WAIT:
-			printf("R:Work is WAIT\n");
-			break;
-
 		default:
 			printf("NO WORK SPECIFIED. THAT'S WRONG\n");
 		}
@@ -262,7 +256,8 @@ int main(void)
 		while (!bck.expired);
 
 		tf++;
-		if (receiver.frame_no * FRAME_BYTES > receiver.size)
+		if (receiver.size && receiver.frame_no * FRAME_BYTES
+				>= receiver.size)
 			break;
 		fflush(stdout);
 	}
