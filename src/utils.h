@@ -19,6 +19,7 @@
 #define EXTRA_SYNC_TIME		1000000		// uSEC
 
 #define FRAME_SIZE		32
+#define FRAME_BYTES		(FRAME_SIZE) / 8
 #define FRAME_HEADER_SIZE	18
 #define FRAME_TOTAL_SIZE	(FRAME_SIZE) + (FRAME_HEADER_SIZE)
 #define FRAME_SEQ_SIZE		8
@@ -66,7 +67,7 @@ int stop_timer(struct backend *bck);
 void calibrate(struct backend *bck, unsigned long *zero_work,
 		unsigned long *one_work, int is_sender);
 void send(int val, struct backend *bck);
-void fill_frame(unsigned long work, struct worker worker);
+void fill_frame(unsigned long work, struct worker *worker);
 unsigned long recv(struct backend *bck);
 int init(struct backend *bck);
 

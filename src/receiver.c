@@ -65,6 +65,7 @@ static int build_ack_frame()
 
 }
 
+/* Store frame bits received */
 static void store_info(void)
 {
 	char *seq, *byte, *crc;
@@ -108,7 +109,11 @@ static void store_info(void)
 		}
 
 		/* TODO: check CRC, copy data to bits if ok */
-		receiver.frame_no = (int)(*seq);
+		receiver.buf_p = receiver.frame_no * FRAME_SIZE / 8;
+		printf("R: places data in byte at %d\n", receiver.buf_p);
+		memcpy(&receiver.buf[receiver.buf_p], byte, 4 * sizeof(char));
+		printf("\t\t\tR: -----GOT: %s|\n", receiver.buf);
+		printf("\t\t\tR: -----GOT byte: %s|\n", byte);
 
 		free(byte);
 		free(seq);
@@ -194,7 +199,7 @@ int main(void)
 			printf("R:Work is RECV_INFO\n");
 
 			work = recv(&bck);
-			fill_frame(work, receiver);
+			fill_frame(work, &receiver);
 
 			/* Finish receiving info, switch to next state */
 			if (receiver.trans == receiver.to_trans) {
@@ -211,7 +216,7 @@ int main(void)
 			printf("R:Work is RECV, trans %d, to_trans%d \n",
 					receiver.trans, receiver.to_trans);
 			work = recv(&bck);
-			fill_frame(work, receiver);
+			fill_frame(work, &receiver);
 
 			/* Finished receiving, send ACK */
 			if (receiver.trans == receiver.to_trans) {
@@ -234,8 +239,15 @@ int main(void)
 			send(receiver.frame[receiver.trans], &bck);
 			receiver.trans++;
 
+			/* Finished sending ACK, continue receiving */
 			if (receiver.trans == receiver.to_trans) {
-				printf("-----------STOP ACK------------\n");
+				receiver.trans = 0;
+				receiver.to_trans = FRAME_TOTAL_SIZE;
+				state = RECV;
+
+				/* Only if the frame is ok */
+				receiver.frame_no++;
+				printf("R: Receiver frame no is %d\n", receiver.frame_no);
 			}
 			break;
 
@@ -250,7 +262,7 @@ int main(void)
 		while (!bck.expired);
 
 		tf++;
-		if (!running)
+		if (receiver.frame_no * FRAME_BYTES > receiver.size)
 			break;
 		fflush(stdout);
 	}

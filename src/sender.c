@@ -22,7 +22,7 @@ static int init_sender(char *file_name, const int bytes)
 
 	/* Read data to be sent from file */
 	sender.size = bytes;
-	sender.frame_no = 1;
+	sender.frame_no = 0;
 	if ((count = read_from_file(file_name, &sender.buf, bytes)) < 0)
 		return res;
 	printf("Buffer to send is %s\n", sender.buf);
@@ -75,7 +75,6 @@ static int build_frame(void)
 	frame[idx] = (int)1;
 
 	free(frame_no_bits);
-	sender.frame_no++;
 
 	memcpy(sender.frame, frame, FRAME_TOTAL_SIZE);
 
@@ -115,6 +114,32 @@ static int build_info_frame(void)
 	return res;
 }
 
+
+/* Check if ACK is OK */
+static int check_ack(void)
+{
+	int res = 1;
+	char *byte;
+
+	/* Get frame sequence number from ACK */
+	if ((res = bits_to_bytes(&sender.frame[1], &byte, 8))) {
+		printf("Error converting bits to bytes\n");
+		return 0;
+	}
+	printf("S: ACK got sequence number %d, seq is %d\n",
+			(int)(*byte), sender.frame_no);
+
+	/* Check if the sequence number corresponds to the senders */
+	if ((int)(*byte) != sender.frame_no)
+		return 0;
+
+	printf("S: ACK OK\n");
+	free(byte);
+	return 1;
+}
+
+
+/* Prepare sender for the next state */
 static int check_progress(void)
 {
 	int res = 0;
@@ -136,11 +161,11 @@ static int check_progress(void)
 		if (sender.trans)
 			return res;
 
+		printf("S: Going to send the next frame %d\n", sender.frame_no);
 		if ((res = build_frame())) {
 			printf("Unable to build frame\n");
 			return res;
 		}
-		printf("S: Going to send the next frame\n");
 		print_frame(sender);
 		fflush(stdout);
 		break;
@@ -192,7 +217,7 @@ int main(int argc, char **argv)
 		/* Do something until the timer expires */
 		switch (state) {
 		case SEND_INFO:
-			printf("Work is SEND_INFO\n");
+			printf("S: Work is SEND_INFO\n");
 
 			send(sender.frame[sender.trans], &bck);
 			sender.trans++;
@@ -207,7 +232,7 @@ int main(int argc, char **argv)
 
 
 		case SEND:
-			printf("Work is SEND\n");
+			printf("S: Work is SEND\n");
 			send(sender.frame[sender.trans], &bck);
 			sender.trans++;
 
@@ -221,12 +246,18 @@ int main(int argc, char **argv)
 			break;
 
 		case RECV_ACK:
-			printf("Work is RECV\n");
+			printf("S: Work is RECV_ACK\n");
 			work = recv(&bck);
-			fill_frame(work, sender);
+			fill_frame(work, &sender);
 
+			/* Finished receiving ACK */
 			if (sender.trans == sender.to_trans) {
-				printf("_____________STOP_________\n");
+				if (check_ack())
+					sender.frame_no++;
+				else
+					printf("S: ACK WRONG, resending %d\n",
+							sender.frame_no);
+
 				sender.trans = 0;
 				sender.to_trans = FRAME_TOTAL_SIZE;
 				state = SEND;
@@ -242,7 +273,7 @@ int main(int argc, char **argv)
 		while (!bck.expired);
 
 		tf++;
-		if (!running)
+		if (sender.frame_no * FRAME_BYTES > sender.size)
 			break;
 		fflush(stdout);
 	}

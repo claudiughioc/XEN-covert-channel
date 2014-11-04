@@ -1,7 +1,8 @@
 #include "utils.h"
 
-void fill_frame(unsigned long work, struct worker worker)
+void fill_frame(unsigned long work, struct worker *init)
 {
+	struct worker worker = *init;
 	if (work < worker.threshold) {
 		printf("R: Got a one with %lu\n", work);
 		worker.frame[worker.trans++] = (int)1;
@@ -9,6 +10,8 @@ void fill_frame(unsigned long work, struct worker worker)
 		printf("R: Got a zero with %lu\n", work);
 		worker.frame[worker.trans++] = (int)0;
 	}
+
+	*init = worker;
 }
 
 void print_frame(struct worker worker)
