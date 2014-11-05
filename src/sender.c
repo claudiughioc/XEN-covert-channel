@@ -7,12 +7,12 @@ static work_id state;
 static struct backend bck;
 static struct worker sender;
 
+
 static void timer_handler(int signal)
 {
-	//printf("S: Timer expired\n");
-	fflush(stdout);
 	bck.expired = 1;
 }
+
 
 /* Initialize the sender */
 static int init_sender(char *file_name, int bytes)
@@ -47,15 +47,20 @@ static int init_sender(char *file_name, int bytes)
 	return res;
 }
 
+
+/* Build a frame */
 static int build_frame(void)
 {
-	int res = 0, idx = 1, i;
+	int res = 0, idx = 1;
 	unsigned char frame[FRAME_TOTAL_SIZE];
 	unsigned char *frame_no_bits;
+	unsigned char *crc_bits;
+	char crc;
 
 	printf("Creating frame %d\n", (int)sender.frame_no);
 	/* Start bit */
 	frame[0] = (int)1;
+
 
 	/* Add the sequence number */
 	if ((res = bytes_to_bits(&sender.frame_no, &frame_no_bits, 1))) {
@@ -65,11 +70,20 @@ static int build_frame(void)
 	memcpy(&frame[1], frame_no_bits, FRAME_SEQ_SIZE);
 	idx += FRAME_SEQ_SIZE;
 
+
 	/* Add the data */
 	memcpy(&frame[idx], &sender.bits[sender.bits_p], FRAME_SIZE);
 	idx += FRAME_SIZE;
 
+
 	/* Add the CRC code */
+	crc = crc8(&sender.bits[sender.bits_p], FRAME_SIZE);
+	printf("S: Crc is %d\n", (int)crc);
+	if ((res = bytes_to_bits(&crc, &crc_bits, 1))) {
+		printf("Error transforming crc number to bits\n");
+		return res;
+	}
+	memcpy(&frame[idx], crc_bits, FRAME_CRC_SIZE);
 	idx += FRAME_CRC_SIZE;
 
 	/* Stop bit */
@@ -82,9 +96,12 @@ static int build_frame(void)
 	return res;
 }
 
+
+/* Build the initial frame which contains the number of bytes to
+ * transmit */
 static int build_info_frame(void)
 {
-	int res = 0, idx = 1, i;
+	int res = 0, idx = 1;
 	unsigned char frame[FRAME_TOTAL_SIZE];
 	unsigned char *aux;
 	char size = (char)sender.size;
@@ -103,10 +120,6 @@ static int build_info_frame(void)
 
 	/* Stop bit */
 	frame[idx] = (int)1;
-
-	printf("Info frame\n");
-	for (i = 0; i < FRAME_SEQ_SIZE + 2; i++)
-		printf("%d, ", frame[i]);
 
 	memcpy(sender.frame, frame, FRAME_SEQ_SIZE + 2);
 	sender.to_trans = FRAME_SEQ_SIZE + 2;
@@ -212,7 +225,7 @@ int main(int argc, char **argv)
 		/* Prepare what to do next */
 		if ((res = check_progress())) {
 			printf("Unable to prepare sender\n");
-			return res;
+			goto out;
 		}
 
 		/* Do something until the timer expires */
@@ -273,14 +286,15 @@ int main(int argc, char **argv)
 
 		while (!bck.expired);
 
-		tf++;
+		/* Decide when to stop */
 		if (sender.frame_no * FRAME_BYTES >= sender.size)
 			break;
+		tf++;
 		fflush(stdout);
 	}
 
 
-
+out:
 	printf("S: is out\n");
 	free(sender.buf);
 	free(sender.bits);

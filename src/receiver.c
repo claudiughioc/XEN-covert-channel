@@ -7,9 +7,9 @@ static work_id state;
 static struct worker receiver;
 static struct backend bck;
 
+
 static void timer_handler(int signal)
 {
-	//printf("R: Timer expired\n");
 	fflush(stdout);
 	bck.expired = 1;
 }
@@ -35,6 +35,7 @@ static int init_receiver(void)
 	return res;
 }
 
+
 static int build_ack_frame()
 {
 	int res = 0, idx = 1;
@@ -45,7 +46,10 @@ static int build_ack_frame()
 	/* Start bit */
 	frame[0] = (int)1;
 
-	/* Add the size of the file */
+	/* Add the sequence number */
+	if (!receiver.crc_ok)
+		seq = (char)(receiver.frame_no - 1);
+	printf("Sending ACK for frame seq %d\n", (int)seq);
 	if ((res = bytes_to_bits(&seq, &aux, 1))) {
 		printf("Error transforming seq number to bits\n");
 		return res;
@@ -68,7 +72,7 @@ static int build_ack_frame()
 /* Store frame bits received */
 static void store_info(void)
 {
-	char *seq, *byte, *crc;
+	char *seq, *byte, *crc, real_crc;
 
 	switch (state) {
 	case RECV_INFO:
@@ -107,13 +111,19 @@ static void store_info(void)
 			printf("Error converting bits to bytes\n");
 			return;
 		}
+		real_crc = crc8(&receiver.frame[1 + FRAME_SEQ_SIZE], FRAME_SIZE);
+		printf("R: Crc received is %d, real CRC is %d\n", (int)(*crc), real_crc);
 
 		/* TODO: check CRC, copy data to bits if ok */
-		receiver.buf_p = receiver.frame_no * FRAME_SIZE / 8;
-		printf("R: places data in byte at %d\n", receiver.buf_p);
-		memcpy(&receiver.buf[receiver.buf_p], byte, 4 * sizeof(char));
-		printf("\t\t\tR: -----GOT: %s|\n", receiver.buf);
-		printf("\t\t\tR: -----GOT byte: %s|\n", byte);
+		if (*crc == real_crc) {
+			printf("R: transfer ok\n");
+			receiver.crc_ok = 1;
+			receiver.buf_p = receiver.frame_no * FRAME_SIZE / 8;
+			memcpy(&receiver.buf[receiver.buf_p], byte, 4 * sizeof(char));
+			printf("R: places data in byte at %d\n", receiver.buf_p);
+			printf("\t\t\tR: -----GOT: %s|\n", receiver.buf);
+			printf("\t\t\tR: -----GOT byte: %s|\n", byte);
+		}
 
 		free(byte);
 		free(seq);
@@ -125,6 +135,8 @@ static void store_info(void)
 	}
 }
 
+
+/* Prepare the receiver for the next state */
 static int check_progress(void)
 {
 	int res = 0;
@@ -144,14 +156,15 @@ static int check_progress(void)
 		if (receiver.trans)
 			return res;
 
-		printf("R: Receiving frame\n");
+		printf("R: Receiving frame %d\n", receiver.frame_no);
+		receiver.crc_ok = 0;
 		break;
 	
 	case SEND_ACK:
 		if (receiver.trans)
 			return res;
 
-		printf("R: Sending ACK\n");
+		printf("R: Sending ACK, crc_ok is %d\n", receiver.crc_ok);
 		if ((res = build_ack_frame())) {
 			printf("Unable to build ack frame\n");
 			return res;
@@ -169,14 +182,20 @@ static int check_progress(void)
 }
 
 
-int main(void)
+int main(int argc, char **argv)
 {
 	int res = 0;
 	unsigned long work;
 
+	/* Check arguments */
+	if (argc < 2) {
+		printf("Usage: %s file_name\n", argv[0]);
+		return 1;
+	}
+
+	/* Initialize the receiver */
 	if ((res = init_receiver()))
 		return res;
-
 	printf("R: All initiated\n");
 
 
@@ -190,7 +209,7 @@ int main(void)
 		/* Prepare what to do next */
 		if ((res = check_progress())) {
 			printf("Unable to prepare receiver\n");
-			return res;
+			goto out;
 		}
 
 		/* Do something until the timer expires */
@@ -244,7 +263,8 @@ int main(void)
 				state = RECV;
 
 				/* Only if the frame is ok */
-				receiver.frame_no++;
+				if (receiver.crc_ok)
+					receiver.frame_no++;
 				printf("R: Receiver frame no is %d\n", receiver.frame_no);
 			}
 			break;
@@ -255,14 +275,21 @@ int main(void)
 
 		while (!bck.expired);
 
-		tf++;
+		/* Decide when to stop */
 		if (receiver.size && receiver.frame_no * FRAME_BYTES
 				>= receiver.size)
 			break;
+		tf++;
 		fflush(stdout);
 	}
 
+	/* Write result to file */
+	if ((res = write_to_file(argv[1], receiver.buf, receiver.size)) < 0) {
+		printf("Error writing results to file\n");
+		goto out;
+	}
 
+out:
 	printf("R is out\n");
 	free(receiver.buf);
 	free(receiver.bits);

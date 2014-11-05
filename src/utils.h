@@ -50,6 +50,7 @@ struct worker {
 	char frame_no;			// frame sequence number, starts at 1
 
 	unsigned long threshold;	// decide whether it's one or zero
+	int crc_ok;
 };
 
 struct backend {
@@ -72,7 +73,9 @@ unsigned long recv(struct backend *bck);
 int init(struct backend *bck);
 
 int read_from_file(char *file_name, char **buf, int size);
+int write_to_file(char *file_name, char *buffer, int size);
 int bytes_to_bits(const char *buf, unsigned char **bits, int size);
 int bits_to_bytes(const unsigned char *bits, char **bytes, int bits_no);
+unsigned char crc8(unsigned char *vptr, int len);
 
 #endif
