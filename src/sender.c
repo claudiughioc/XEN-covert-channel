@@ -203,6 +203,7 @@ int main(int argc, char **argv)
 {
 	int res = 0;
 	unsigned long work;
+	unsigned long zero_work, one_work;
 
 	if (argc < 3) {
 		printf("Usage: %s file_name nr_chars\n", argv[0]);
@@ -216,9 +217,9 @@ int main(int argc, char **argv)
 
 
 	state = SEND_INFO;
-	printf("S: Going to run now\n");
+	//printf("S: Going to run now\n");
 	while (running) {
-		printf("\nS: Time frame is %d\n", tf);
+		//printf("\nS: Time frame is %d\n", tf);
 		bck.expired = 0;
 
 
@@ -231,7 +232,7 @@ int main(int argc, char **argv)
 		/* Do something until the timer expires */
 		switch (state) {
 		case SEND_INFO:
-			printf("S: Work is SEND_INFO\n");
+			//printf("S: Work is SEND_INFO\n");
 
 			send(sender.frame[sender.trans], &bck);
 			sender.trans++;
@@ -246,7 +247,7 @@ int main(int argc, char **argv)
 
 
 		case SEND:
-			printf("S: Work is SEND\n");
+			//printf("S: Work is SEND\n");
 			send(sender.frame[sender.trans], &bck);
 			sender.trans++;
 
@@ -259,7 +260,7 @@ int main(int argc, char **argv)
 			break;
 
 		case RECV_ACK:
-			printf("S: Work is RECV_ACK\n");
+			//printf("S: Work is RECV_ACK\n");
 			work = recv(&bck);
 			fill_frame(work, &sender);
 
@@ -268,18 +269,20 @@ int main(int argc, char **argv)
 				if (check_ack()) {
 					sender.frame_no++;
 					sender.bits_p += FRAME_SIZE;
-				} else
-					printf("S: ACK WRONG, resending %d\n",
+				} else {
+					printf("S: ACK WRONG, resending frame %d\n",
 							sender.frame_no);
+					calibrate(&bck, &zero_work, &one_work, 1);
+					printf("S: zero %lu, one %lu\n", zero_work, one_work);
+					sender.threshold = (one_work + zero_work) / 2;
+				}
 
 				sender.trans = 0;
 				sender.to_trans = FRAME_TOTAL_SIZE;
 				state = SEND;
 			}
 			break;
-		case WAIT:
-			printf("Work is WAIT\n");
-			break;
+
 		default:
 			printf("NO WORK SPECIFIED. THAT'S WRONG\n");
 		}

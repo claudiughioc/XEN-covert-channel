@@ -45,10 +45,10 @@ void fill_frame(unsigned long work, struct worker *init)
 {
 	struct worker worker = *init;
 	if (work < worker.threshold) {
-		printf("R: Got a one with %lu\n", work);
+		//printf("R: Got a one with %lu\n", work);
 		worker.frame[worker.trans++] = (int)1;
 	} else {
-		printf("R: Got a zero with %lu\n", work);
+		//printf("R: Got a zero with %lu\n", work);
 		worker.frame[worker.trans++] = (int)0;
 	}
 
@@ -115,7 +115,7 @@ static void send_one(struct backend *bck)
 {
 	unsigned long long x = 1;
 
-	printf("Sending one\n");
+	//printf("Sending one\n");
 	while (!bck->expired) {
 		x *= LARGE_PRIME;
 	}
@@ -125,7 +125,7 @@ static void send_one(struct backend *bck)
 /* Send the bit 0 */
 static void send_zero(struct backend *bck)
 {
-	printf("Sending zero\n");
+	//printf("Sending zero\n");
 	usleep(NSEC_TO_USEC(BIT_TIME_NSEC - 20000000));
 	while (!bck->expired);
 }

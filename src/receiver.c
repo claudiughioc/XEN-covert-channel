@@ -49,7 +49,7 @@ static int build_ack_frame()
 	/* Add the sequence number */
 	if (!receiver.crc_ok)
 		seq = (char)(receiver.frame_no - 1);
-	printf("Sending ACK for frame seq %d\n", (int)seq);
+	//printf("Sending ACK for frame seq %d\n", (int)seq);
 	if ((res = bytes_to_bits(&seq, &aux, 1))) {
 		printf("Error transforming seq number to bits\n");
 		return res;
@@ -80,7 +80,7 @@ static void store_info(void)
 			printf("Error converting bits to bytes\n");
 			return;
 		}
-		printf("Will have to transfer %d bytes\n", (int)(*byte));
+		//printf("Will have to transfer %d bytes\n", (int)(*byte));
 
 		/* Allocate space for receiver buffers */
 		receiver.size = (int)(*byte);
@@ -96,7 +96,7 @@ static void store_info(void)
 			printf("Error converting bits to bytes\n");
 			return;
 		}
-		printf("R: Sequence number is %d\n", (int)(*seq));
+		//printf("R: Sequence number is %d\n", (int)(*seq));
 
 		/* Get payload */
 		if (bits_to_bytes(&receiver.frame[1 + FRAME_SEQ_SIZE],
@@ -120,9 +120,9 @@ static void store_info(void)
 			receiver.crc_ok = 1;
 			receiver.buf_p = receiver.frame_no * FRAME_SIZE / 8;
 			memcpy(&receiver.buf[receiver.buf_p], byte, 4 * sizeof(char));
-			printf("R: places data in byte at %d\n", receiver.buf_p);
-			printf("\t\t\tR: -----GOT: %s|\n", receiver.buf);
-			printf("\t\t\tR: -----GOT byte: %s|\n", byte);
+			//printf("R: places data in byte at %d\n", receiver.buf_p);
+			printf("\t\t\tR: -----GOT frame: %s|\n", byte);
+			printf("\t\t\tR: ---------TOTAL: %s|\n", receiver.buf);
 		}
 
 		free(byte);
@@ -146,7 +146,7 @@ static int check_progress(void)
 		if (receiver.trans)
 			return res;
 
-		printf("R: Receiving init info\n");
+		//printf("R: Receiving init info\n");
 		receiver.trans = 0;
 		receiver.to_trans = FRAME_SEQ_SIZE + 2;
 		break;
@@ -164,7 +164,7 @@ static int check_progress(void)
 		if (receiver.trans)
 			return res;
 
-		printf("R: Sending ACK, crc_ok is %d\n", receiver.crc_ok);
+		//printf("R: Sending ACK, crc_ok is %d\n", receiver.crc_ok);
 		if ((res = build_ack_frame())) {
 			printf("Unable to build ack frame\n");
 			return res;
@@ -186,6 +186,7 @@ int main(int argc, char **argv)
 {
 	int res = 0;
 	unsigned long work;
+	unsigned long zero_work, one_work;
 
 	/* Check arguments */
 	if (argc < 2) {
@@ -200,9 +201,9 @@ int main(int argc, char **argv)
 
 
 	state = RECV_INFO;
-	printf("Going to run now\n");
+	//printf("Going to run now\n");
 	while (running) {
-		printf("\nR: Time frame is %d\n", tf);
+		//printf("\nR: Time frame is %d\n", tf);
 		bck.expired = 0;
 
 
@@ -215,7 +216,7 @@ int main(int argc, char **argv)
 		/* Do something until the timer expires */
 		switch (state) {
 		case RECV_INFO:
-			printf("R:Work is RECV_INFO\n");
+			//printf("R:Work is RECV_INFO\n");
 
 			work = recv(&bck);
 			fill_frame(work, &receiver);
@@ -232,8 +233,8 @@ int main(int argc, char **argv)
 			break;
 
 		case RECV:
-			printf("R:Work is RECV, trans %d, to_trans%d \n",
-					receiver.trans, receiver.to_trans);
+			//printf("R:Work is RECV, trans %d, to_trans%d \n",
+			//		receiver.trans, receiver.to_trans);
 			work = recv(&bck);
 			fill_frame(work, &receiver);
 
@@ -247,12 +248,12 @@ int main(int argc, char **argv)
 				receiver.to_trans = FRAME_ACK_SIZE;
 				state = SEND_ACK;
 			}
-			printf("R:out of recv\n");
+			//printf("R:out of recv\n");
 			fflush(stdout);
 			break;
 
 		case SEND_ACK:
-			printf("R:Work is SEND_ACK\n");
+			//printf("R:Work is SEND_ACK\n");
 			send(receiver.frame[receiver.trans], &bck);
 			receiver.trans++;
 
@@ -265,7 +266,13 @@ int main(int argc, char **argv)
 				/* Only if the frame is ok */
 				if (receiver.crc_ok)
 					receiver.frame_no++;
-				printf("R: Receiver frame no is %d\n", receiver.frame_no);
+				else {
+					calibrate(&bck, &zero_work, &one_work, 0);
+					printf("R: zero %lu, one %lu\n", zero_work, one_work);
+					receiver.threshold = (one_work + zero_work) / 2;
+
+				}
+				//printf("R: Receiver frame no is %d\n", receiver.frame_no);
 			}
 			break;
 
